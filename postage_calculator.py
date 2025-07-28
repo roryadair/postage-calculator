@@ -46,10 +46,16 @@ usps_rates = {
 }
 
 def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=None):
-    shape = shape.lower()
     mail_type = mail_type.lower()
     mail_class = mail_class.strip()
     rounded_weight = round(weight_oz * 2) / 2
+
+    # Automatically switch to flat for weights over 3.5oz if user selects 'letter'
+    if shape.lower() == "letter" and weight_oz > 3.5:
+        shape = "flat"
+        sortation_level = None
+
+    shape = shape.lower()
 
     try:
         if shape == "letter":
@@ -58,9 +64,9 @@ def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=N
             available_weights = usps_rates[shape][mail_class][mail_type]
             closest = min((w for w in available_weights if w >= rounded_weight), default=None)
             rate = available_weights.get(closest, "N/A")
-        return rate
+        return rate, shape
     except KeyError:
-        return "Rate not found"
+        return "Rate not found", shape
 
 def generate_pdf(data):
     pdf = FPDF()
@@ -95,7 +101,7 @@ export_format = st.selectbox("Export Format", ["None", "CSV", "PDF"])
 
 if st.button("Calculate Postage"):
     st.subheader("Estimated Postage")
-    rate = calculate_postage(weight, shape, mail_class, mail_type, sortation_level)
+    rate, adjusted_shape = calculate_postage(weight, shape, mail_class, mail_type, sortation_level)
 
     if isinstance(rate, str):
         st.error(rate)
@@ -105,7 +111,7 @@ if st.button("Calculate Postage"):
         st.success(f"Total Cost for {quantity} Pieces: ${total:.2f}")
 
         result_data = {
-            "Shape": shape,
+            "Shape": adjusted_shape,
             "Mail Class": mail_class,
             "Type": mail_type,
             "Weight (oz)": weight,
@@ -126,7 +132,7 @@ if st.button("Calculate Postage"):
             pdf = generate_pdf(result_data)
             st.download_button("Download PDF", pdf, "postage_estimate.pdf", "application/pdf")
 
-    st.markdown(f"**Shape**: {shape}\n\n**Mail Class**: {mail_class}\n\n**Type**: {mail_type}\n\n**Weight**: {weight} oz\n\n**Quantity**: {quantity}")
+    st.markdown(f"**Shape**: {adjusted_shape}\n\n**Mail Class**: {mail_class}\n\n**Type**: {mail_type}\n\n**Weight**: {weight} oz\n\n**Quantity**: {quantity}")
     if sortation_level:
         st.markdown(f"**Sortation Level**: {sortation_level}")
     if origin_zip and dest_zip:
