@@ -64,9 +64,9 @@ def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=N
             available_weights = usps_rates[shape][mail_class][mail_type]
             closest = min((w for w in available_weights if w >= rounded_weight), default=None)
             rate = available_weights.get(closest, "N/A")
-        return rate, shape
+        return rate, shape.capitalize()
     except KeyError:
-        return "Rate not found", shape
+        return "Rate not found", shape.capitalize()
 
 def generate_pdf(data):
     pdf = FPDF()
@@ -83,14 +83,20 @@ st.title("📬 USPS Postage Calculator")
 st.header("Package Details")
 
 weight = st.number_input("Weight (oz)", min_value=0.1, max_value=70.0, step=0.1)
+
+# Automatically switch shape to "Flat" if weight > 3.5 oz
+default_shape = "Flat" if weight > 3.5 else "Letter"
+if weight > 3.5:
+    st.info("Weight exceeds 3.5 oz — Shape automatically switched to 'Flat'.")
+shape = st.selectbox("Shape", ["Letter", "Flat"], index=["Letter", "Flat"].index(default_shape))
+
 quantity = st.number_input("Quantity", min_value=1, step=1)
-shape = st.selectbox("Shape", ["Letter", "Flat"])
 mail_class = st.selectbox("Mail Class", ["First-Class Mail", "Marketing Mail"])
 type_options = ["Automation"]
 mail_type = st.selectbox("Type", type_options)
 
 sortation_level = None
-if shape == "Letter":
+if shape == "Letter" and weight <= 3.5:
     sortation_level = st.selectbox("Sortation Level", ["5-Digit", "AADC", "Mixed AADC"])
 
 st.header("ZIP Codes (Optional)")
