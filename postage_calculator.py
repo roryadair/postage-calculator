@@ -68,10 +68,8 @@ def generate_pdf(data):
     pdf.set_font("Arial", size=12)
     for key, value in data.items():
         pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    return pdf_output
+    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+    return BytesIO(pdf_bytes)
 
 st.set_page_config(page_title="Postage Calculator", layout="centered")
 st.title("📬 USPS Postage Calculator")
