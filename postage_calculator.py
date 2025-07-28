@@ -1,4 +1,7 @@
 import streamlit as st
+import pandas as pd
+from io import BytesIO
+from fpdf import FPDF
 
 # USPS comprehensive rate table
 usps_rates = {
@@ -59,12 +62,24 @@ def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=N
     except KeyError:
         return "Rate not found"
 
+def generate_pdf(data):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    for key, value in data.items():
+        pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
+    pdf_output = BytesIO()
+    pdf.output(pdf_output)
+    pdf_output.seek(0)
+    return pdf_output
+
 st.set_page_config(page_title="Postage Calculator", layout="centered")
 st.title("📬 USPS Postage Calculator")
 
 st.header("Package Details")
 
 weight = st.number_input("Weight (oz)", min_value=0.1, max_value=70.0, step=0.1)
+quantity = st.number_input("Quantity", min_value=1, step=1)
 shape = st.selectbox("Shape", ["Letter", "Flat"])
 mail_class = st.selectbox("Mail Class", ["First-Class Mail", "Marketing Mail"])
 type_options = ["Automation"]
@@ -78,6 +93,8 @@ st.header("ZIP Codes (Optional)")
 origin_zip = st.text_input("Origin ZIP Code", max_chars=5)
 dest_zip = st.text_input("Destination ZIP Code", max_chars=5)
 
+export_format = st.selectbox("Export Format", ["None", "CSV", "PDF"])
+
 if st.button("Calculate Postage"):
     st.subheader("Estimated Postage")
     rate = calculate_postage(weight, shape, mail_class, mail_type, sortation_level)
@@ -85,9 +102,33 @@ if st.button("Calculate Postage"):
     if isinstance(rate, str):
         st.error(rate)
     else:
-        st.success(f"Estimated Cost: ${rate:.2f}")
+        total = rate * quantity
+        st.success(f"Estimated Cost per Piece: ${rate:.2f}")
+        st.success(f"Total Cost for {quantity} Pieces: ${total:.2f}")
 
-    st.markdown(f"**Shape**: {shape}\n\n**Mail Class**: {mail_class}\n\n**Type**: {mail_type}\n\n**Weight**: {weight} oz")
+        result_data = {
+            "Shape": shape,
+            "Mail Class": mail_class,
+            "Type": mail_type,
+            "Weight (oz)": weight,
+            "Quantity": quantity,
+            "Sortation Level": sortation_level or "N/A",
+            "Origin ZIP": origin_zip or "N/A",
+            "Destination ZIP": dest_zip or "N/A",
+            "Cost per Piece": f"${rate:.2f}",
+            "Total Cost": f"${total:.2f}"
+        }
+
+        if export_format == "CSV":
+            df = pd.DataFrame([result_data])
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download CSV", csv, "postage_estimate.csv", "text/csv")
+
+        elif export_format == "PDF":
+            pdf = generate_pdf(result_data)
+            st.download_button("Download PDF", pdf, "postage_estimate.pdf", "application/pdf")
+
+    st.markdown(f"**Shape**: {shape}\n\n**Mail Class**: {mail_class}\n\n**Type**: {mail_type}\n\n**Weight**: {weight} oz\n\n**Quantity**: {quantity}")
     if sortation_level:
         st.markdown(f"**Sortation Level**: {sortation_level}")
     if origin_zip and dest_zip:
