@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from fpdf import FPDF
+from decimal import Decimal, ROUND_HALF_UP
 
 # USPS comprehensive rate table
 usps_rates = {
@@ -24,26 +25,28 @@ usps_rates = {
     "flat": {
         "First-Class Mail": {
             "automation": {
-                1.0: round(1.230, 2),
-                2.0: round(1.505, 2),
-                3.0: round(1.775, 2),
-                4.0: round(2.045, 2),
-                5.0: round(2.325, 2),
-                6.0: round(2.305, 2)
+                1.0: float(Decimal("1.230").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                2.0: float(Decimal("1.505").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                3.0: float(Decimal("1.775").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                4.0: float(Decimal("2.045").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                5.0: float(Decimal("2.325").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                6.0: float(Decimal("2.305").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
             }
         },
         "Marketing Mail": {
             "automation": {
-                1.0: round(0.986, 2),
-                2.0: round(0.986, 2),
-                3.0: round(0.986, 2),
-                4.0: round(0.986, 2),
-                5.0: round(1.073, 2),
-                6.0: round(1.119, 2)
+                1.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                2.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                3.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                4.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                5.0: float(Decimal("1.073").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                6.0: float(Decimal("1.119").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
             }
         }
     }
 }
+
+# (rest of the code remains unchanged)
 
 def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=None):
     mail_type = mail_type.lower()
