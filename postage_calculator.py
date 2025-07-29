@@ -91,7 +91,7 @@ weight = st.number_input("Weight (oz)", min_value=0.1, max_value=70.0, step=0.1)
 default_shape = "Flat" if weight > 3.5 else "Letter"
 if weight > 3.5:
     st.info("Weight exceeds 3.5 oz — Shape automatically switched to 'Flat'.")
-shape = st.selectbox("Shape", ["Letter", "Flat"], index=["Letter", "Flat"].index(default_shape))
+shape = st.selectbox("Shape (Digest = Letter ≤ 3.5 oz)", ["Letter", "Flat"], index=["Letter", "Flat"].index(default_shape))
 
 quantity = st.number_input("Quantity", min_value=1, step=1)
 mail_class = st.selectbox("Mail Class", ["First-Class Mail", "Marketing Mail"])
