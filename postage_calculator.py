@@ -88,8 +88,24 @@ if weight > 3.5:
     st.info("Weight exceeds 3.5 oz — Shape automatically switched to 'Flat'.")
 
 quantity = st.number_input("Quantity", min_value=1, step=1)
-mail_class = st.selectbox("Mail Class", ["FCM", "FCM PRST", "STD PRST", "First-Class Mail", "Marketing Mail"])
-rate_source = st.selectbox("Rate Source", ["USPS Automation", "Command Financial (Full)", "Command Financial (Digest)"])
+mail_class = st.selectbox("Mail Class", [
+    "First-Class Mail",
+    "First-Class Mail Presort",
+    "Standard Presort",
+    "Marketing Mail"
+])
+
+# Automatically select rate source if applicable
+if mail_class in ["First-Class Mail Presort", "Standard Presort"]:
+    default_rate_source = "Command Financial (Full)"
+else:
+    default_rate_source = "USPS Automation"
+
+rate_source = st.selectbox(
+    "Rate Source",
+    ["USPS Automation", "Command Financial (Full)", "Command Financial (Digest)"],
+    index=["USPS Automation", "Command Financial (Full)", "Command Financial (Digest)"].index(default_rate_source)
+)
 
 sortation_level = None
 if rate_source == "USPS Automation" and shape == "Letter" and weight <= 3.5:
