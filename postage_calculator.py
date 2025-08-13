@@ -5,7 +5,121 @@ from fpdf import FPDF
 from decimal import Decimal, ROUND_HALF_UP
 
 # --- USPS and Command Financial Rate Tables ---
-# (usps_rates and command_rates already defined above)
+usps_rates = {
+    "letter": {
+        "First-Class Mail": {
+            "automation": {
+                "5-Digit": 0.593,
+                "AADC": 0.641,
+                "Mixed AADC": 0.672
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                "5-Digit": 0.372,
+                "AADC": 0.407,
+                "Mixed AADC": 0.433
+            }
+        }
+    },
+    "flat": {
+        "First-Class Mail": {
+            "automation": {
+                1.0: 1.23,
+                2.0: 1.51,
+                3.0: 1.78,
+                4.0: 2.05,
+                5.0: 2.33,
+                6.0: 2.31
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                1.0: 0.99,
+                2.0: 0.99,
+                3.0: 0.99,
+                4.0: 0.99,
+                5.0: 1.07,
+                6.0: 1.12
+            }
+        }
+    }
+}
+
+command_rates = {
+    "letter": {
+        "First-Class Mail": {
+            "automation": {
+                "5-Digit": 0.40,
+                "AADC": 0.45,
+                "Mixed AADC": 0.48
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                "5-Digit": 0.25,
+                "AADC": 0.27,
+                "Mixed AADC": 0.30
+            }
+        }
+    },
+    "flat": {
+        "First-Class Mail": {
+            "automation": {
+                1.0: 0.99,
+                2.0: 1.25,
+                3.0: 1.55,
+                4.0: 1.85,
+                5.0: 2.15,
+                6.0: 2.45
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                1.0: 0.75,
+                2.0: 0.88,
+                3.0: 1.01,
+                4.0: 1.14,
+                5.0: 1.27,
+                6.0: 1.40
+            }
+        }
+    }
+}
+
+
+def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level, rate_table):
+    mail_type = mail_type.lower()
+    mail_class = mail_class.strip()
+    rounded_weight = round(weight_oz * 2) / 2
+
+    if shape.lower() == "letter" and weight_oz > 3.5:
+        shape = "flat"
+        sortation_level = None
+
+    shape = shape.lower()
+
+    try:
+        if shape == "letter":
+            rate = rate_table[shape][mail_class][mail_type].get(sortation_level, "N/A")
+        else:
+            available_weights = rate_table[shape][mail_class][mail_type]
+            closest = min((w for w in available_weights if w >= rounded_weight), default=None)
+            rate = available_weights.get(closest, "N/A")
+        return rate, shape.capitalize()
+    except KeyError:
+        return "Rate not found", shape.capitalize()
+
+
+def generate_pdf(data):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    for key, value in data.items():
+        pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
+    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+    return BytesIO(pdf_bytes)
+
 
 # --- UI Begins ---
 st.set_page_config(page_title="Postage Calculator", layout="centered")
