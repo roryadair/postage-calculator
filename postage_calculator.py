@@ -4,88 +4,54 @@ from io import BytesIO
 from fpdf import FPDF
 from decimal import Decimal, ROUND_HALF_UP
 
-# --- USPS and Command Financial Rate Tables ---
-usps_rates = {
-    "letter": {
-        "First-Class Mail": {
-            "automation": {
-                "5-Digit": 0.593,
-                "AADC": 0.641,
-                "Mixed AADC": 0.672
-            }
-        },
-        "Marketing Mail": {
-            "automation": {
-                "5-Digit": 0.372,
-                "AADC": 0.407,
-                "Mixed AADC": 0.433
-            }
-        }
-    },
-    "flat": {
-        "First-Class Mail": {
-            "automation": {
-                1.0: 1.23,
-                2.0: 1.51,
-                3.0: 1.78,
-                4.0: 2.05,
-                5.0: 2.33,
-                6.0: 2.31
-            }
-        },
-        "Marketing Mail": {
-            "automation": {
-                1.0: 0.99,
-                2.0: 0.99,
-                3.0: 0.99,
-                4.0: 0.99,
-                5.0: 1.07,
-                6.0: 1.12
-            }
-        }
-    }
-}
+# --- Load Rates from Excel File ---
+uploaded_file = "All_Rate_Tables 08 13 2025.xlsx"
+usps_rates = {"letter": {}, "flat": {}}
+command_rates = {"letter": {}, "flat": {}}
 
-command_rates = {
-    "letter": {
-        "First-Class Mail": {
-            "automation": {
-                "5-Digit": 0.40,
-                "AADC": 0.45,
-                "Mixed AADC": 0.48
-            }
-        },
-        "Marketing Mail": {
-            "automation": {
-                "5-Digit": 0.25,
-                "AADC": 0.27,
-                "Mixed AADC": 0.30
-            }
-        }
-    },
-    "flat": {
-        "First-Class Mail": {
-            "automation": {
-                1.0: 0.99,
-                2.0: 1.25,
-                3.0: 1.55,
-                4.0: 1.85,
-                5.0: 2.15,
-                6.0: 2.45
-            }
-        },
-        "Marketing Mail": {
-            "automation": {
-                1.0: 0.75,
-                2.0: 0.88,
-                3.0: 1.01,
-                4.0: 1.14,
-                5.0: 1.27,
-                6.0: 1.40
-            }
-        }
-    }
-}
+# --- USPS Letter Rates ---
+usps_letter_df = pd.read_excel(uploaded_file, sheet_name="USPS_Letter_Rates")
+for _, row in usps_letter_df.iterrows():
+    shape = "letter"
+    mail_class = row["Mail Class"]
+    mail_type = "automation"
+    sort_level = row["Sortation Level"]
+    rate = float(row["Rate"])
+
+    usps_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[sort_level] = rate
+
+# --- USPS Flat Rates ---
+usps_flat_df = pd.read_excel(uploaded_file, sheet_name="USPS_Flat_Rates")
+for _, row in usps_flat_df.iterrows():
+    shape = "flat"
+    mail_class = row["Mail Class"]
+    mail_type = "automation"
+    weight = float(row["Weight (oz)"])
+    rate = float(row["Rate"])
+
+    usps_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[weight] = rate
+
+# --- Command Financial Digest Size (Letters) ---
+cmd_digest_df = pd.read_excel(uploaded_file, sheet_name="Digest_Size_Rates")
+for _, row in cmd_digest_df.iterrows():
+    shape = "letter"
+    mail_class = row["Mail Class"]
+    mail_type = "automation"
+    sort_level = row["Sortation Level"]
+    rate = float(row["Rate"])
+
+    command_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[sort_level] = rate
+
+# --- Command Financial Full Size (Flats) ---
+cmd_full_df = pd.read_excel(uploaded_file, sheet_name="Full_Size_Rates")
+for _, row in cmd_full_df.iterrows():
+    shape = "flat"
+    mail_class = row["Mail Class"]
+    mail_type = "automation"
+    weight = float(row["Weight (oz)"])
+    rate = float(row["Rate"])
+
+    command_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[weight] = rate
 
 
 def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level, rate_table):
