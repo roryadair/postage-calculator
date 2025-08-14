@@ -4,54 +4,41 @@ from io import BytesIO
 from fpdf import FPDF
 from decimal import Decimal, ROUND_HALF_UP
 
-# --- Load Rates from Excel File ---
+# --- Load USPS Rates from Excel ---
 uploaded_file = "All_Rate_Tables 08 13 2025.xlsx"
 usps_rates = {"letter": {}, "flat": {}}
-command_rates = {"letter": {}, "flat": {}}
 
 # --- USPS Letter Rates ---
 usps_letter_df = pd.read_excel(uploaded_file, sheet_name="USPS_Letter_Rates")
 for _, row in usps_letter_df.iterrows():
     shape = "letter"
-    mail_class = row["Mail Class"]
+    mail_class = row["Mail Class"].strip()
     mail_type = "automation"
-    sort_level = row["Sortation Level"]
-    rate = float(row["Rate"])
-
-    usps_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[sort_level] = rate
+    sort_level = row["Sortation Level"].strip()
+    base_rate = float(row["Rate"])
+    usps_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {}).setdefault(sort_level, {})[3.5] = base_rate
 
 # --- USPS Flat Rates ---
 usps_flat_df = pd.read_excel(uploaded_file, sheet_name="USPS_Flat_Rates")
 for _, row in usps_flat_df.iterrows():
     shape = "flat"
-    mail_class = row["Mail Class"]
+    mail_class = row["Mail Class"].strip()
     mail_type = "automation"
     weight = float(row["Weight (oz)"])
     rate = float(row["Rate"])
-
     usps_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[weight] = rate
 
-# --- Command Financial Digest Size (Letters) ---
-cmd_digest_df = pd.read_excel(uploaded_file, sheet_name="Digest_Size_Rates")
-for _, row in cmd_digest_df.iterrows():
-    shape = "letter"
-    mail_class = row["Mail Class"]
-    mail_type = "automation"
-    sort_level = row["Sortation Level"]
-    rate = float(row["Rate"])
-
-    command_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[sort_level] = rate
-
-# --- Command Financial Full Size (Flats) ---
-cmd_full_df = pd.read_excel(uploaded_file, sheet_name="Full_Size_Rates")
-for _, row in cmd_full_df.iterrows():
-    shape = "flat"
-    mail_class = row["Mail Class"]
-    mail_type = "automation"
-    weight = float(row["Weight (oz)"])
-    rate = float(row["Rate"])
-
-    command_rates[shape].setdefault(mail_class, {}).setdefault(mail_type, {})[weight] = rate
+# --- Extrapolate USPS Flat Rates up to 12 oz ---
+for shape in ["flat"]:
+    for mail_class in usps_rates[shape]:
+        for mail_type in usps_rates[shape][mail_class]:
+            weight_rates = usps_rates[shape][mail_class][mail_type]
+            max_weight = max(weight_rates.keys())
+            max_rate = weight_rates[max_weight]
+            for oz in range(int(max_weight)+1, 13):
+                # Estimate new rate by adding a fixed increment (e.g., $0.20 per ounce)
+                est_rate = Decimal(str(max_rate + 0.20 * (oz - max_weight))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                weight_rates[oz] = float(est_rate)
 
 
 def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level, rate_table):
@@ -67,7 +54,7 @@ def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level, 
 
     try:
         if shape == "letter":
-            rate = rate_table[shape][mail_class][mail_type].get(sortation_level, "N/A")
+            rate = rate_table[shape][mail_class][mail_type][sortation_level][3.5]
         else:
             available_weights = rate_table[shape][mail_class][mail_type]
             closest = min((w for w in available_weights if w >= rounded_weight), default=None)
@@ -89,12 +76,7 @@ def generate_pdf(data):
 
 # --- UI Begins ---
 st.set_page_config(page_title="Postage Calculator", layout="centered")
-st.title("📬 USPS & Command Financial Postage Calculator")
-
-# Sidebar toggle for rate source
-st.sidebar.title("Rate Source")
-rate_provider = st.sidebar.radio("Choose rate table:", ["USPS", "Command Financial"])
-rate_table = usps_rates if rate_provider == "USPS" else command_rates
+st.title("📬 USPS Postage Calculator")
 
 # User inputs
 st.header("Package Details")
@@ -126,7 +108,7 @@ export_format = st.selectbox("Export Format", ["None", "CSV", "PDF"])
 # Calculate Postage button
 if st.button("Calculate Postage"):
     st.subheader("Estimated Postage")
-    rate, adjusted_shape = calculate_postage(weight, shape, mail_class, mail_type, sortation_level, rate_table)
+    rate, adjusted_shape = calculate_postage(weight, shape, mail_class, mail_type, sortation_level, usps_rates)
 
     if isinstance(rate, str):
         st.error(rate)
@@ -136,7 +118,6 @@ if st.button("Calculate Postage"):
         st.success(f"Total Cost for {quantity} Pieces: ${total:.2f}")
 
         result_data = {
-            "Rate Source": rate_provider,
             "Shape": adjusted_shape,
             "Mail Class": mail_class,
             "Type": mail_type,
