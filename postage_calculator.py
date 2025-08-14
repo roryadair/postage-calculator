@@ -1,101 +1,27 @@
 
 import streamlit as st
-import pandas as pd
 from io import BytesIO
 from fpdf import FPDF
-from decimal import Decimal, ROUND_HALF_UP
 
-USPS_EXCEL_PATH = "/mnt/data/usps_rates.xlsx"
+# ===== Hardcoded USPS rates (letters+flats only) =====
+USPS_RATES = {'letter': {'First-Class Mail': {'automation': {'5-Digit': {3.5: 0.593}, 'AADC': {3.5: 0.641}, 'Mixed AADC': {3.5: 0.672}}}, 'Marketing Mail': {'automation': {'5-Digit': {3.5: 0.372}, 'AADC': {3.5: 0.407}, 'Mixed AADC': {3.5: 0.433}}}}, 'flat': {'First-Class Mail': {'automation': {1.0: 1.23, 2.0: 1.505, 3.0: 1.775, 4.0: 2.045, 5.0: 2.325, 6.0: 2.305}}, 'Marketing Mail': {'automation': {1.0: 0.986, 2.0: 0.986, 3.0: 0.986, 4.0: 0.986, 5.0: 1.073, 6.0: 1.119}}}}
 
-# ---------- Helpers to load ONLY the two sheets ----------
-def _normalize_mail_class(category: str) -> str:
-    cat = str(category)
-    if "First-Class Mail" in cat:
-        return "First-Class Mail"
-    if "Marketing Mail" in cat:
-        return "Marketing Mail"
-    # fallback
-    return cat.strip()
-
-def load_usps_rates(file_path: str):
-    """Load USPS rates from ONLY:
-        - 'USPS_Letter_Rates' (columns: Category, 5-Digit, AADC, Mixed AADC)
-        - 'USPS_Flat_Rates'   (columns: Category, 1oz, 2oz, 3oz, ...)
-    Returns a nested dict: usps_rates[shape][mail_class][mail_type][...]
-    """
-    usps_rates = {"letter": {}, "flat": {}}
-
-    # ----- Letters (assume up to 3.5 oz single-piece automation pricing by sort level) -----
-    letter_df = pd.read_excel(file_path, sheet_name="USPS_Letter_Rates")
-    expected_letter_cols = {"Category", "5-Digit", "AADC", "Mixed AADC"}
-    missing_letter_cols = expected_letter_cols - set(letter_df.columns)
-    if missing_letter_cols:
-        raise ValueError(f"USPS_Letter_Rates is missing expected columns: {missing_letter_cols}")
-
-    for _, row in letter_df.iterrows():
-        mail_class = _normalize_mail_class(row["Category"])
-        mail_type = "automation"
-        sort_cols = ["5-Digit", "AADC", "Mixed AADC"]
-        for sort_col in sort_cols:
-            rate = row.get(sort_col)
-            if pd.notna(rate):
-                usps_rates["letter"].setdefault(mail_class, {}).setdefault(mail_type, {}).setdefault(sort_col, {})[3.5] = float(rate)
-
-    # ----- Flats (columns like 1oz, 2oz, ... N oz) -----
-    flat_df = pd.read_excel(file_path, sheet_name="USPS_Flat_Rates")
-    # Identify weight columns like '1oz', '2oz', etc.
-    weight_cols = [c for c in flat_df.columns if str(c).lower().endswith("oz")]
-    if not weight_cols:
-        raise ValueError("USPS_Flat_Rates has no weight columns ending with 'oz' (e.g., '1oz', '2oz').")
-
-    for _, row in flat_df.iterrows():
-        mail_class = _normalize_mail_class(row["Category"])
-        mail_type = "automation"
-        for wcol in weight_cols:
-            try:
-                weight_oz = float(str(wcol).lower().replace("oz", "").strip())
-            except ValueError:
-                continue
-            rate = row.get(wcol)
-            if pd.notna(rate):
-                usps_rates["flat"].setdefault(mail_class, {}).setdefault(mail_type, {})[weight_oz] = float(rate)
-
-    # Extrapolate flat weights up to 12 oz by a gentle increment if needed
-    for mail_class, by_type in list(usps_rates["flat"].items()):
-        for mail_type, weight_rates in list(by_type.items()):
-            if not weight_rates:
-                continue
-            max_weight = max(weight_rates.keys())
-            max_rate = weight_rates[max_weight]
-            # If weights end before 12 oz, extend with small increments (e.g., $0.20 per oz)
-            if max_weight < 12:
-                for oz in range(int(max_weight) + 1, 13):
-                    est_rate = Decimal(str(max_rate + 0.20 * (oz - max_weight))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-                    weight_rates[float(oz)] = float(est_rate)
-
-    return usps_rates
-
-def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level, rate_table):
-    # normalize
+def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level):
     mail_type = mail_type.lower().strip()
     mail_class = mail_class.strip()
     shape = shape.lower().strip()
 
-    # Round to nearest 0.5 oz for flat lookups
     rounded_weight = round(weight_oz * 2) / 2
 
-    # If letters exceed 3.5 oz, switch to flats
     if shape == "letter" and weight_oz > 3.5:
         shape = "flat"
         sortation_level = None
 
     try:
         if shape == "letter":
-            # one rate up to 3.5 oz, by sortation level
-            rate = rate_table["letter"][mail_class][mail_type][sortation_level][3.5]
+            rate = USPS_RATES["letter"][mail_class][mail_type][sortation_level][3.5]
         else:
-            available_weights = rate_table["flat"][mail_class][mail_type]
-            # choose the nearest available weight at or ABOVE the rounded weight
+            available_weights = USPS_RATES["flat"][mail_class][mail_type]
             candidates = [w for w in available_weights.keys() if w >= rounded_weight]
             closest = min(candidates) if candidates else max(available_weights.keys())
             rate = available_weights.get(closest, "N/A")
@@ -109,22 +35,13 @@ def generate_pdf(data):
     pdf.set_font("Arial", size=12)
     for key, value in data.items():
         pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
-    pdf_bytes = pdf.output(dest='S').encode('latin-1')
-    return BytesIO(pdf_bytes)
+    return BytesIO(pdf.output(dest='S').encode('latin-1'))
 
-# ---------- UI ----------
 st.set_page_config(page_title="Postage Calculator", layout="centered")
-st.title("📬 USPS Postage Calculator (Letters & Flats Only)")
+st.title("📬 USPS Postage Calculator — Hardcoded Rates")
 
-# Load rates from ONLY the two sheets
-try:
-    usps_rates = load_usps_rates(USPS_EXCEL_PATH)
-    st.success("USPS rates loaded from 'USPS_Letter_Rates' and 'USPS_Flat_Rates'.")
-except Exception as e:
-    st.error(f"Problem loading USPS rates: {e}")
-    st.stop()
+st.caption("This version uses hardcoded rates from the 'USPS_Letter_Rates' and 'USPS_Flat_Rates' sheets. No Excel needed.")
 
-# Inputs
 st.header("Package Details")
 weight = st.number_input("Weight (oz)", min_value=0.1, max_value=70.0, step=0.1)
 
@@ -149,7 +66,7 @@ export_format = st.selectbox("Export Format", ["None", "CSV", "PDF"])
 
 if st.button("Calculate Postage"):
     st.subheader("Estimated Postage")
-    rate, adjusted_shape = calculate_postage(weight, shape, mail_class, mail_type, sortation_level, usps_rates)
+    rate, adjusted_shape = calculate_postage(weight, shape, mail_class, mail_type, sortation_level)
 
     if isinstance(rate, str):
         st.error(rate)
@@ -172,6 +89,7 @@ if st.button("Calculate Postage"):
         }
 
         if export_format == "CSV":
+            import pandas as pd
             df = pd.DataFrame([result_data])
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("Download CSV", csv, "postage_estimate.csv", "text/csv")
