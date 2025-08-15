@@ -1,29 +1,71 @@
-
 import streamlit as st
+import pandas as pd
 from io import BytesIO
 from fpdf import FPDF
+from decimal import Decimal, ROUND_HALF_UP
 
-# ===== Hardcoded USPS rates (letters+flats only) =====
-USPS_RATES = {'letter': {'First-Class Mail': {'automation': {'5-Digit': {3.5: 0.593}, 'AADC': {3.5: 0.641}, 'Mixed AADC': {3.5: 0.672}}}, 'Marketing Mail': {'automation': {'5-Digit': {3.5: 0.372}, 'AADC': {3.5: 0.407}, 'Mixed AADC': {3.5: 0.433}}}}, 'flat': {'First-Class Mail': {'automation': {1.0: 1.23, 2.0: 1.505, 3.0: 1.775, 4.0: 2.045, 5.0: 2.325, 6.0: 2.305}}, 'Marketing Mail': {'automation': {1.0: 0.986, 2.0: 0.986, 3.0: 0.986, 4.0: 0.986, 5.0: 1.073, 6.0: 1.119}}}}
+# USPS comprehensive rate table
+usps_rates = {
+    "letter": {
+        "First-Class Mail": {
+            "automation": {
+                "5-Digit": 0.593,
+                "AADC": 0.641,
+                "Mixed AADC": 0.672
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                "5-Digit": 0.372,
+                "AADC": 0.407,
+                "Mixed AADC": 0.433
+            }
+        }
+    },
+    "flat": {
+        "First-Class Mail": {
+            "automation": {
+                1.0: float(Decimal("1.230").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                2.0: float(Decimal("1.505").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                3.0: float(Decimal("1.775").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                4.0: float(Decimal("2.045").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                5.0: float(Decimal("2.325").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                6.0: float(Decimal("2.305").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            }
+        },
+        "Marketing Mail": {
+            "automation": {
+                1.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                2.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                3.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                4.0: float(Decimal("0.986").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                5.0: float(Decimal("1.073").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                6.0: float(Decimal("1.119").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            }
+        }
+    }
+}
 
-def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level):
-    mail_type = mail_type.lower().strip()
+# (rest of the code remains unchanged)
+
+def calculate_postage(weight_oz, shape, mail_class, mail_type, sortation_level=None):
+    mail_type = mail_type.lower()
     mail_class = mail_class.strip()
-    shape = shape.lower().strip()
-
     rounded_weight = round(weight_oz * 2) / 2
 
-    if shape == "letter" and weight_oz > 3.5:
+    # Automatically switch to flat for weights over 3.5oz if user selects 'letter'
+    if shape.lower() == "letter" and weight_oz > 3.5:
         shape = "flat"
         sortation_level = None
 
+    shape = shape.lower()
+
     try:
         if shape == "letter":
-            rate = USPS_RATES["letter"][mail_class][mail_type][sortation_level][3.5]
+            rate = usps_rates[shape][mail_class][mail_type].get(sortation_level, "N/A")
         else:
-            available_weights = USPS_RATES["flat"][mail_class][mail_type]
-            candidates = [w for w in available_weights.keys() if w >= rounded_weight]
-            closest = min(candidates) if candidates else max(available_weights.keys())
+            available_weights = usps_rates[shape][mail_class][mail_type]
+            closest = min((w for w in available_weights if w >= rounded_weight), default=None)
             rate = available_weights.get(closest, "N/A")
         return rate, shape.capitalize()
     except KeyError:
@@ -35,24 +77,26 @@ def generate_pdf(data):
     pdf.set_font("Arial", size=12)
     for key, value in data.items():
         pdf.cell(200, 10, txt=f"{key}: {value}", ln=True)
-    return BytesIO(pdf.output(dest='S').encode('latin-1'))
+    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+    return BytesIO(pdf_bytes)
 
 st.set_page_config(page_title="Postage Calculator", layout="centered")
-st.title("📬 USPS Postage Calculator — Hardcoded Rates")
-
-st.caption("This version uses hardcoded rates from the 'USPS_Letter_Rates' and 'USPS_Flat_Rates' sheets. No Excel needed.")
+st.title("📬 USPS Postage Calculator")
 
 st.header("Package Details")
+
 weight = st.number_input("Weight (oz)", min_value=0.1, max_value=70.0, step=0.1)
 
+# Automatically switch shape to "Flat" if weight > 3.5 oz
 default_shape = "Flat" if weight > 3.5 else "Letter"
 if weight > 3.5:
-    st.info("Weight exceeds 3.5 oz — shape switched to 'Flat'.")
-shape = st.selectbox("Shape", ["Letter", "Flat"], index=["Letter", "Flat"].index(default_shape))
+    st.info("Weight exceeds 3.5 oz — Shape automatically switched to 'Flat'.")
+shape = st.selectbox("Shape (Digest = Letter ≤ 3.5 oz)", ["Letter", "Flat"], index=["Letter", "Flat"].index(default_shape))
 
 quantity = st.number_input("Quantity", min_value=1, step=1)
 mail_class = st.selectbox("Mail Class", ["First-Class Mail", "Marketing Mail"])
-mail_type = st.selectbox("Type", ["Automation"])
+type_options = ["Automation"]
+mail_type = st.selectbox("Type", type_options)
 
 sortation_level = None
 if shape == "Letter" and weight <= 3.5:
@@ -89,7 +133,6 @@ if st.button("Calculate Postage"):
         }
 
         if export_format == "CSV":
-            import pandas as pd
             df = pd.DataFrame([result_data])
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("Download CSV", csv, "postage_estimate.csv", "text/csv")
@@ -98,9 +141,11 @@ if st.button("Calculate Postage"):
             pdf = generate_pdf(result_data)
             st.download_button("Download PDF", pdf, "postage_estimate.pdf", "application/pdf")
 
-        st.markdown("\n".join([f"**{k}**: {v}" for k, v in result_data.items()]))
-
-        if origin_zip and dest_zip:
-            st.info("Zone-based pricing will be applied in a future version.")
-        else:
-            st.info("Flat-rate logic is used (no zones).")
+    st.markdown(f"**Shape**: {adjusted_shape}\n\n**Mail Class**: {mail_class}\n\n**Type**: {mail_type}\n\n**Weight**: {weight} oz\n\n**Quantity**: {quantity}")
+    if sortation_level:
+        st.markdown(f"**Sortation Level**: {sortation_level}")
+    if origin_zip and dest_zip:
+        st.markdown(f"**From**: {origin_zip} → **To**: {dest_zip}")
+        st.info("Zone-based pricing will be applied in a future version.")
+    else:
+        st.info("Flat-rate logic is used (no zones).")
